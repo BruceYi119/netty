@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<link rel="stylesheet" data-th-href="@{/css/init.css}" />
+<link rel="stylesheet" data-th-href="@{/css/global.css}" />
+</head>
+<body>
+	<div id="wrap">
+		<form data-th-action="@{/file/send}" data-th-method="post" enctype="multipart/form-data">
+			<table>
+				<tr>
+					<td><h1>파일 송신</h1></td>
+				</tr>
+				<tr>
+					<td>파일 1 : <input type="file" name="files" /></td>
+				</tr>
+				<tr>
+					<td>파일 2 : <input type="file" name="files" /></td>
+				</tr>
+				<tr>
+					<td>파일 3 : <input type="file" name="files" /></td>
+				</tr>
+				<tr>
+					<td><button type="submit">송신</button></td>
+				</tr>
+			</table>
+		</form>
+	</div>
+</body>
+</html>

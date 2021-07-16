@@ -1,0 +1,9 @@
+channelActive
+channelRead
+
+두군데서 map 만들때 null 체크해서
+ctx.alloc().buffer()
+담고있는데 두군데서 체크하는 이유가 있나요?
+
+예를들어
+channelActive 에서만 하면 안되는 경우가 있다던지
