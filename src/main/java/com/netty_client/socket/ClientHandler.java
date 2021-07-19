@@ -64,13 +64,11 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-		System.out.println("channelReadComplete");
 		ctx.flush();
 	}
 
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-		System.out.println("channelInactive");
 		clearModel();
 
 		ctx.close();
@@ -78,7 +76,6 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-		System.out.println("exceptionCaught");
 		clearModel();
 
 		log.error("exceptionCaught : ", cause);
@@ -98,7 +95,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 			case 'S':
 				// 최초 전송시
 				if (!model.isSend()) {
-					System.out.println("최초 전송시");
+					log.info(String.format("ch-%s : 최초 전송시", ctx.channel().id()));
 					FileInputStream fis = null;
 					BufferedInputStream bis = null;
 					char sendType = (char) recvBytes[1];
@@ -141,13 +138,12 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 							? model.getMaxDataSize()
 							: model.getFileSize() - model.getSendSize();
 					byte[] data = new byte[sendSize];
-
 					System.arraycopy(model.getData(), model.getSendSize(), data, 0, data.length);
 
 					sendBytes = getTelegram("S", data.length + 35, data);
 
 					model.setSendSize(model.getSendSize() + sendSize);
-					// 전송완료 전문
+				// 전송완료 전문
 				} else {
 					sendBytes = getTelegram("E", 35);
 				}
@@ -157,16 +153,16 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 				ctx.writeAndFlush(bb);
 				break;
 			case 'W':
-				System.out.println("에러");
 				log.error("ERROR");
 				clearModel();
 				ctx.close();
+				log.info(String.format("ch-%s : 에러", ctx.channel().id()));
 				break;
 			// 전송완료
 			default:
-				System.out.println("전송완료");
 				clearModel();
 				ctx.close();
+				log.info(String.format("ch-%s : 전송완료", ctx.channel().id()));
 				break;
 			}
 
