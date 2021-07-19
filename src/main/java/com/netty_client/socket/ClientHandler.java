@@ -23,22 +23,16 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 	public static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
 	private SocketModel model;
+	private int recvMsgSize = 12;
 
 	public ClientHandler(File file) {
-		this.model = new SocketModel(file);
-
-		initModel();
+		initModel(file);
 	}
 
-	private void initModel() {
-		model.setSize((int) model.getFile().length());
+	private void initModel(File file) {
+		model = new SocketModel(file);
+		model.setFileSize((int) model.getFile().length());
 		model.setSb(new StringBuffer());
-		try {
-			model.setFis(new FileInputStream(model.getFile()));
-			model.setBis(new BufferedInputStream(model.getFis(), (int) model.getFile().length()));
-		} catch (FileNotFoundException e) {
-			log.error("FileNotFoundException : ", e);
-		}
 	}
 
 	@Override
@@ -47,22 +41,10 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 		ctx.channel().pipeline().addLast(new WriteTimeoutHandler(30));
 
 		model.setPacket(ctx.alloc().buffer());
-		model.getSb().setLength(0);
 
-		// 전문타입 1 (I : 개시 전문/S : 전송/E : 마지막 전송)
-		model.getSb().append("I");
-		// 전문길이 4
-		model.getSb().append(Telegram.numPad(35, 4));
-		// 파일명 20
-		model.getSb().append(Telegram.strPad(model.getFile().getName(), 20));
-		// 파일크기 10
-		model.getSb().append(Telegram.numPad(model.getSize(), 10));
-		// 파일내용 36~5120 가변
-
+		byte[] sendBytes = getTelegram("I", 35);
 		ByteBuf bb = Unpooled.buffer();
-		bb.writeBytes(model.getSb().toString().getBytes());
-
-		model.getSb().setLength(0);
+		bb.writeBytes(sendBytes);
 
 		ctx.writeAndFlush(bb);
 	}
@@ -77,67 +59,165 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 		model.getPacket().writeBytes(b);
 		b.release();
 
-		process();
+		process(ctx);
 	}
 
 	@Override
 	public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+		System.out.println("channelReadComplete");
 		ctx.flush();
 	}
 
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-		clearModel(ctx);
+		System.out.println("channelInactive");
+		clearModel();
 
 		ctx.close();
 	}
 
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-		clearModel(ctx);
+		System.out.println("exceptionCaught");
+		clearModel();
 
 		log.error("exceptionCaught : ", cause);
 
 		ctx.close();
 	}
 
-	private void process() {
-		while (model.getPacket().readableBytes() >= 12) {
-			byte[] bt = new byte[12];
+	private void process(ChannelHandlerContext ctx) {
+		while (model.getPacket().readableBytes() >= recvMsgSize) {
+			byte[] sendBytes = null;
+			byte[] recvBytes = new byte[recvMsgSize];
 
-			model.getPacket().readBytes(bt, 0, bt.length);
+			model.getPacket().readBytes(recvBytes, 0, recvBytes.length);
 
-			switch ((char) bt[0]) {
+			switch ((char) recvBytes[0]) {
 			// 전송
 			case 'S':
+				// 최초 전송시
+				if (!model.isSend()) {
+					System.out.println("최초 전송시");
+					FileInputStream fis = null;
+					BufferedInputStream bis = null;
+					char sendType = (char) recvBytes[1];
 
+					try {
+						fis = new FileInputStream(model.getFile());
+						bis = new BufferedInputStream(fis);
+						model.setData(bis.readAllBytes());
+
+						if (sendType == 'I') {
+							byte[] sendSizeByte = new byte[10];
+
+							System.arraycopy(recvBytes, 2, sendSizeByte, 0, sendSizeByte.length);
+
+							int sendSize = Integer.parseInt(new String(sendSizeByte));
+
+							model.setSendSize(sendSize);
+						}
+					} catch (FileNotFoundException e) {
+						log.error("FileNotFoundException : ", e);
+					} catch (IOException e) {
+						log.error("IOException : ", e);
+					} finally {
+						try {
+							if (fis != null)
+								fis.close();
+							if (bis != null)
+								bis.close();
+						} catch (IOException e) {
+							log.error("IOException : ", e);
+						}
+					}
+
+					model.setSend(true);
+				}
+
+				// 전송 전문
+				if (model.getFileSize() > model.getSendSize()) {
+					int sendSize = (model.getFileSize() - model.getSendSize()) > model.getMaxDataSize()
+							? model.getMaxDataSize()
+							: model.getFileSize() - model.getSendSize();
+					byte[] data = new byte[sendSize];
+
+					System.arraycopy(model.getData(), model.getSendSize(), data, 0, data.length);
+
+					sendBytes = getTelegram("S", data.length + 35, data);
+
+					model.setSendSize(model.getSendSize() + sendSize);
+					// 전송완료 전문
+				} else {
+					sendBytes = getTelegram("E", 35);
+				}
+
+				ByteBuf bb = Unpooled.buffer();
+				bb.writeBytes(sendBytes);
+				ctx.writeAndFlush(bb);
+				break;
+			case 'W':
+				System.out.println("에러");
+				log.error("ERROR");
+				clearModel();
+				ctx.close();
 				break;
 			// 전송완료
 			default:
-
+				System.out.println("전송완료");
+				clearModel();
+				ctx.close();
 				break;
 			}
 
-			model.getPacket().release();
 		}
 	}
 
-	private void clearModel(ChannelHandlerContext ctx) {
+	private byte[] getTelegram(String type, int teleSize) {
+		byte[] bytes = new byte[teleSize];
+
+		model.getSb().setLength(0);
+
+		// 전문타입 1 (I : 개시 전문/S : 전송/E : 마지막 전송)
+		model.getSb().append(type);
+		// 전문길이 4
+		model.getSb().append(Telegram.numPad(teleSize, 4));
+		// 파일명 20
+		model.getSb().append(Telegram.strPad(model.getFile().getName(), 20));
+		// 파일크기 10
+		model.getSb().append(Telegram.numPad(model.getFileSize(), 10));
+
+		bytes = model.getSb().toString().getBytes();
+
+		return bytes;
+	}
+
+	private byte[] getTelegram(String type, int teleSize, byte[] data) {
+		byte[] bytes = new byte[teleSize];
+
+		model.getSb().setLength(0);
+
+		// 전문타입 1 (I : 개시 전문/S : 전송/E : 전송완료)
+		model.getSb().append(type);
+		// 전문길이 4
+		model.getSb().append(Telegram.numPad(teleSize, 4));
+		// 파일명 20
+		model.getSb().append(Telegram.strPad(model.getFile().getName(), 20));
+		// 파일크기 10
+		model.getSb().append(Telegram.numPad(model.getFileSize(), 10));
+		System.arraycopy(model.getSb().toString().getBytes(), 0, bytes, 0, 35);
+		// 파일내용 36~5120 가변 (max : 5085)
+		System.arraycopy(data, 0, bytes, 35, data.length);
+
+		return bytes;
+	}
+
+	private void clearModel() {
 		if (model.getPacket() != null) {
+			model.getPacket().readerIndex(model.getPacket().writerIndex());
 			while (model.getPacket().refCnt() > 0)
 				model.getPacket().release();
 		}
-
-		try {
-			if (model.getFis() != null)
-				model.getFis().close();
-			if (model.getBis() != null)
-				model.getBis().close();
-		} catch (IOException e) {
-			log.error("IOException : ", e);
-		}
-
-		model = null;
 	}
 
 }

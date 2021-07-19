@@ -1,8 +1,6 @@
 package com.netty_client.socket;
 
-import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 
 import io.netty.buffer.ByteBuf;
 import lombok.Data;
@@ -13,13 +11,14 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SocketModel {
 
+	private int fileSize;
+	private int sendSize;
+	private int maxDataSize = 5085;
 	@NonNull
 	private File file;
-	private int size;
-	private int sendSize;
+	private byte[] data;
+	private boolean send = false;
 	private ByteBuf packet;
 	private StringBuffer sb;
-	private FileInputStream fis;
-	private BufferedInputStream bis;
 
 }
