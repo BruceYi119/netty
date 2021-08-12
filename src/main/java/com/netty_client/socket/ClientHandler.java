@@ -1,10 +1,7 @@
 package com.netty_client.socket;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,13 +22,15 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 	private SocketModel model;
 	private int recvMsgSize = 12;
 
-	public ClientHandler(File file) {
-		initModel(file);
+	public ClientHandler(String fileName, String filePath, int fileSize) {
+		initModel(fileName, filePath, fileSize);
 	}
 
-	private void initModel(File file) {
-		model = new SocketModel(file);
-		model.setFileSize((int) model.getFile().length());
+	private void initModel(String fileName, String filePath, int fileSize) {
+		model = new SocketModel();
+		model.setFileName(fileName);
+		model.setFilePath(filePath);
+		model.setFileSize(fileSize);
 		model.setSb(new StringBuffer());
 	}
 
@@ -41,6 +40,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 		ctx.channel().pipeline().addLast(new WriteTimeoutHandler(30));
 
 		model.setPacket(ctx.alloc().buffer());
+		model.setFileBuf(ctx.alloc().buffer());
 
 		byte[] sendBytes = getTelegram("I", 35);
 		ByteBuf bb = Unpooled.buffer();
@@ -96,14 +96,14 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 				// 최초 전송시
 				if (!model.isSend()) {
 					log.info(String.format("ch-%s : 최초 전송시", ctx.channel().id()));
-					FileInputStream fis = null;
-					BufferedInputStream bis = null;
-					char sendType = (char) recvBytes[1];
-
+					RandomAccessFile raf = null;
 					try {
-						fis = new FileInputStream(model.getFile());
-						bis = new BufferedInputStream(fis);
-						model.setData(bis.readAllBytes());
+						raf = new RandomAccessFile(model.getFilePath(), "r");
+						char sendType = (char) recvBytes[1];
+						byte[] data = new byte[model.getFileSize()];
+						raf.read(data);
+						raf.close();
+						model.getFileBuf().writeBytes(data);
 
 						if (sendType == 'I') {
 							byte[] sendSizeByte = new byte[10];
@@ -113,20 +113,10 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 							int sendSize = Integer.parseInt(new String(sendSizeByte));
 
 							model.setSendSize(sendSize);
+							model.getFileBuf().readBytes(sendSize);
 						}
-					} catch (FileNotFoundException e) {
-						log.error("FileNotFoundException : ", e);
 					} catch (IOException e) {
 						log.error("IOException : ", e);
-					} finally {
-						try {
-							if (fis != null)
-								fis.close();
-							if (bis != null)
-								bis.close();
-						} catch (IOException e) {
-							log.error("IOException : ", e);
-						}
 					}
 
 					model.setSend(true);
@@ -138,12 +128,12 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 							? model.getMaxDataSize()
 							: model.getFileSize() - model.getSendSize();
 					byte[] data = new byte[sendSize];
-					System.arraycopy(model.getData(), model.getSendSize(), data, 0, data.length);
+					model.getFileBuf().readBytes(data).discardReadBytes();
 
 					sendBytes = getTelegram("S", data.length + 35, data);
 
 					model.setSendSize(model.getSendSize() + sendSize);
-				// 전송완료 전문
+					// 전송완료 전문
 				} else {
 					sendBytes = getTelegram("E", 35);
 				}
@@ -179,7 +169,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 		// 전문길이 4
 		model.getSb().append(Telegram.numPad(teleSize, 4));
 		// 파일명 20
-		model.getSb().append(Telegram.strPad(model.getFile().getName(), 20));
+		model.getSb().append(Telegram.strPad(model.getFileName(), 20));
 		// 파일크기 10
 		model.getSb().append(Telegram.numPad(model.getFileSize(), 10));
 
@@ -198,7 +188,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 		// 전문길이 4
 		model.getSb().append(Telegram.numPad(teleSize, 4));
 		// 파일명 20
-		model.getSb().append(Telegram.strPad(model.getFile().getName(), 20));
+		model.getSb().append(Telegram.strPad(model.getFileName(), 20));
 		// 파일크기 10
 		model.getSb().append(Telegram.numPad(model.getFileSize(), 10));
 		System.arraycopy(model.getSb().toString().getBytes(), 0, bytes, 0, 35);

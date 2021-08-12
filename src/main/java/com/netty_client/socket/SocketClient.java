@@ -1,6 +1,5 @@
 package com.netty_client.socket;
 
-import java.io.File;
 import java.util.ArrayList;
 
 import org.slf4j.Logger;
@@ -19,21 +18,18 @@ public class SocketClient implements Runnable {
 	public static final Logger log = LoggerFactory.getLogger(SocketClient.class);
 
 	private int port;
-	@SuppressWarnings("unused")
-	private File file;
 	private String host;
 	private Bootstrap b = null;
 	private EventLoopGroup group = null;
 	private InitHandler handlers = null;
 
-	public SocketClient(String host, int port, File file) {
+	public SocketClient(String host, int port, String fileName, String filePath, int fileSize) {
 		ArrayList<ChannelHandler> handlers = new ArrayList<ChannelHandler>();
 
-		handlers.add(new ClientHandler(file));
+		handlers.add(new ClientHandler(fileName, filePath, fileSize));
 
 		this.port = port;
 		this.host = host;
-		this.file = file;
 		this.handlers = new InitHandler(handlers);
 	}
 

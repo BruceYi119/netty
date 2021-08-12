@@ -47,8 +47,7 @@ public class MainController {
 
 		json.put("result", "fail");
 
-		Path path = Paths
-				.get(System.getProperty("user.dir") + File.separator + env.getProperty("custom.file.upload.path"));
+		Path path = Paths.get(env.getProperty("custom.file.upload.path"));
 
 		if (!path.toFile().exists())
 			path.toFile().mkdirs();
@@ -60,7 +59,8 @@ public class MainController {
 
 					f.transferTo(file);
 
-					threads.add(new Thread(new SocketClient(ip, port, file)));
+					threads.add(new Thread(
+							new SocketClient(ip, port, file.getName(), file.getPath(), (int) file.length())));
 				}
 			}
 
